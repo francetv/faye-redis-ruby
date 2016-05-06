@@ -6,7 +6,7 @@ require 'logger'
 module Faye
   class Redis
 
-    DEFAULT_HOST     = 'localhost'.freeze
+    DEFAULT_HOST     = 'localhost'
     DEFAULT_PORT     = 6379
     DEFAULT_DATABASE = 0
     DEFAULT_GC       = 60
@@ -73,7 +73,6 @@ module Faye
     def create_client(&callback)
       init
       client_id = @server.generate_id
-
       @redis.zadd(@ns + '/clients', 0, client_id) do |added|
         next create_client(&callback) if added == 0
         @server.debug 'Created new client ?', client_id
@@ -83,9 +82,8 @@ module Faye
       end
     end
 
-    def client_exists(client_id)
+    def client_exists(client_id, &callback)
       init
-
       cutoff = get_current_time - (1000 * 1.6 * @server.timeout)
 
       @redis.zscore(@ns + '/clients', client_id) do |score|
@@ -97,8 +95,7 @@ module Faye
       init
       @redis.zadd(@ns + '/clients', 0, client_id) do
         @redis.smembers(@ns + "/clients/#{client_id}/channels") do |channels|
-          i = 0
-          n = channels.size
+           i, n = 0, channels.size
           next after_subscriptions_removed(client_id, &callback) if i == n
 
           channels.each do |channel|
@@ -156,7 +153,6 @@ module Faye
 
     def publish(message, channels)
       init
-
       @server.debug 'Publishing message ?', message
 
       json_message = MultiJson.dump(message)
@@ -209,8 +205,7 @@ module Faye
       with_lock 'gc' do |release_lock|
         cutoff = get_current_time - 1000 * 2 * timeout
         @redis.zrangebyscore(@ns + '/clients', 0, cutoff) do |clients|
-          i = 0
-          n = clients.size
+          i, n = 0, clients.size
           next release_lock.call if i == n
 
           clients.each do |client_id|
