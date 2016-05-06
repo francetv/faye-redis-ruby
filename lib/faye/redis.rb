@@ -5,13 +5,6 @@ require 'logger'
 
 module Faye
   class Redis
-    class << self
-      attr_writer :logger
-
-      def logger
-        @logger ||= Logger.new('redis-sentinel.log')
-      end
-    end
 
     DEFAULT_HOST     = 'localhost'.freeze
     DEFAULT_PORT     = 6379
@@ -24,7 +17,6 @@ module Faye
     end
 
     def initialize(server, options)
-      Faye::Redis.logger.debug 'Initialize'
       @server  = server
       @options = options
 
@@ -32,7 +24,6 @@ module Faye
     end
 
     def init
-      Faye::Redis.logger.error 'init'
       return if @redis
 
       uri    = @options[:uri]       || nil
@@ -49,16 +40,13 @@ module Faye
       if sentinels && master_name
         @redis = EventMachine::Hiredis::Sentinel::RedisClient.new(sentinels: sentinels,
                                                                   master_name: master_name).connect
-        Faye::Redis.logger.error 'Initialized with sentinels'
+        @server.debug 'Redis has been initialized with sentinels'
       elsif uri
         @redis = EventMachine::Hiredis.connect(uri)
-        Faye::Redis.logger.error 'Initialized with uri'
       elsif socket
         @redis = EventMachine::Hiredis::Client.new(socket, nil, auth, db).connect
-        Faye::Redis.logger.error 'Initialized with socket'
       else
         @redis = EventMachine::Hiredis::Client.new(host, port, auth, db).connect
-        Faye::Redis.logger.error 'Initialized with host, port and db'
       end
       @subscriber = @redis.pubsub
 
@@ -76,7 +64,6 @@ module Faye
     end
 
     def disconnect
-      Faye::Redis.logger.error 'Disconnect'
       return unless @redis
       @subscriber.unsubscribe(@message_channel)
       @subscriber.unsubscribe(@close_channel)
@@ -84,16 +71,12 @@ module Faye
     end
 
     def create_client(&callback)
-      Faye::Redis.logger.error 'Create client'
       init
       client_id = @server.generate_id
 
       @redis.zadd(@ns + '/clients', 0, client_id) do |added|
-        Faye::Redis.logger.error "ADDED #{added}"
         next create_client(&callback) if added == 0
         @server.debug 'Created new client ?', client_id
-        Faye::Redis.logger.error "Created new client #{client_id}"
-        Faye::Redis.logger.error "added #{added}"
         ping(client_id)
         @server.trigger(:handshake, client_id)
         callback.call(client_id)
@@ -151,7 +134,6 @@ module Faye
 
     def subscribe(client_id, channel, &callback)
       init
-      Faye::Redis.logger.error "Subscribe to /clients/#{client_id}/channels"
       @redis.sadd(@ns + "/clients/#{client_id}/channels", channel) do |added|
         @server.trigger(:subscribe, client_id, channel) if added == 1
       end
@@ -163,7 +145,6 @@ module Faye
 
     def unsubscribe(client_id, channel, &callback)
       init
-      Faye::Redis.logger.error "UNSubscribe to /clients/#{client_id}/channels"
       @redis.srem(@ns + "/clients/#{client_id}/channels", channel) do |removed|
         @server.trigger(:unsubscribe, client_id, channel) if removed == 1
       end
@@ -175,7 +156,6 @@ module Faye
 
     def publish(message, channels)
       init
-      Faye::Redis.logger.error "Publish a message: #{message}"
 
       @server.debug 'Publishing message ?', message
 
@@ -209,7 +189,7 @@ module Faye
       @redis.multi
       @redis.lrange(key, 0, -1)
       @redis.del(key)
-      @redis.exec.callback do |json_messages, _deleted|
+      @redis.exec.callback do |json_messages, deleted|
         next unless json_messages
         messages = json_messages.map { |json| MultiJson.load(json) }
         @server.deliver(client_id, messages)
@@ -243,7 +223,7 @@ module Faye
       end
     end
 
-    def with_lock(lock_name)
+    def with_lock(lock_name, &block)
       lock_key     = @ns + '/locks/' + lock_name
       current_time = get_current_time
       expiry       = current_time + LOCK_TIMEOUT * 1000 + 1
