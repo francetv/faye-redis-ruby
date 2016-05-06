@@ -192,7 +192,7 @@ module Faye
       end
     end
 
-private
+  private
 
     def get_current_time
       (Time.now.to_f * 1000).to_i
