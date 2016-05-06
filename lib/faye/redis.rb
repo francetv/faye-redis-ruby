@@ -1,7 +1,6 @@
 require 'em-hiredis'
 require 'em-hiredis-sentinel'
 require 'multi_json'
-require 'logger'
 
 module Faye
   class Redis
