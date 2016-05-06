@@ -95,7 +95,7 @@ module Faye
       init
       @redis.zadd(@ns + '/clients', 0, client_id) do
         @redis.smembers(@ns + "/clients/#{client_id}/channels") do |channels|
-           i, n = 0, channels.size
+          i, n = 0, channels.size
           next after_subscriptions_removed(client_id, &callback) if i == n
 
           channels.each do |channel|
@@ -192,7 +192,7 @@ module Faye
       end
     end
 
-    private
+private
 
     def get_current_time
       (Time.now.to_f * 1000).to_i
